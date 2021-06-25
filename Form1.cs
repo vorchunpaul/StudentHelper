@@ -28,7 +28,9 @@ namespace StudentHelper
 {
     public partial class Form1 : Form
     {
-        MarkdownPipeline pipeline = new MarkdownPipelineBuilder().UseAdvancedExtensions().Build();
+        MarkdownPipeline pipeline = new MarkdownPipelineBuilder()
+            .UseAdvancedExtensions()
+            .Build();
 
         public Form1()
         {
@@ -38,12 +40,17 @@ namespace StudentHelper
         string outputfile;
         string html;
 
+
+        List<Document> docs = new List<Document>();
+        List<AngleSharp.Dom.INode> nodes = new List<AngleSharp.Dom.INode>();
+
         static string index_path = ".\\index";
 
         public FSDirectory index_dir = FSDirectory.Open(index_path);
         public StandardAnalyzer analyzer = new StandardAnalyzer(Version.LUCENE_30);
 
-        void md_to_html() {
+        void md_to_html()
+        {
 
             var file = "db";
 
@@ -51,7 +58,7 @@ namespace StudentHelper
 
             richTextBox1.Text = markdown;
 
-            html = Markdown.ToHtml(markdown, pipeline);
+            html = Markdown.ToHtml(markdown, pipeline).Replace("\n", "");
 
             richTextBox2.Text = html;
 
@@ -60,160 +67,126 @@ namespace StudentHelper
             File.WriteAllText(outputfile, html);
         }
 
-        string remove_first_tag(string s) {
-            var str = s.Trim();
+        Document init_doc_from_node(AngleSharp.Dom.INode node) {
+            var index_doc = new Document();
+            var hash_id = node.TextContent.GetHashCode().ToString("X");
+            new List<Field>() {
+                new Field("_type", node.NodeName, Field.Store.YES, Field.Index.ANALYZED),
+                new Field("_anchor", hash_id, Field.Store.YES, Field.Index.ANALYZED),
+            }.ForEach(x => index_doc.Add(x));
+            docs.Add(index_doc);
+            return index_doc;
 
-            var open_tag = Regex.Match(str, ">");
-
-            str = str.Remove(0, open_tag.Index + 1);
-            
-            var close_tag = Regex.Match(str, "</", RegexOptions.RightToLeft);
-
-            str = str.Remove(close_tag.Index, str.Length - close_tag.Index);
-
-            return str;
+            // TODO: вынести в отдельную функцию или учесть что 1 элемент это ссылка
+            //var anchor = doc.CreateElement("a");
+            //anchor.SetAttribute("name", hash_id);
+            //node.AppendChild(anchor);
         }
 
-        
-        void add_tag_to_docs(string tag, string name,  List<Document> docs, AngleSharp.Html.Dom.IHtmlDocument parserd_doc) {
-            foreach (var i in parserd_doc.QuerySelectorAll(tag))
-            {
-                var text = i.TextContent;
-                var pos = i.SourceReference?.Position.ToString();
-
-                var doc = new Document();
-                doc.Add(new Field("_start", pos, Field.Store.YES, Field.Index.ANALYZED));
-                doc.Add(new Field(name, text, Field.Store.YES, Field.Index.ANALYZED));
-                docs.Add(doc);
-            }    
+        void parse_P(AngleSharp.Dom.INode node) {
+            var index = init_doc_from_node(node);
+            index.Add(new Field("text", node.TextContent, Field.Store.YES, Field.Index.ANALYZED));
         }
 
-        void add_items_to_docs(string tag, string name, List<Document> docs, AngleSharp.Html.Dom.IHtmlDocument parserd_doc)
+        void parse_headers(AngleSharp.Dom.INode node)
         {
-            foreach (var i in parserd_doc.QuerySelectorAll(tag))
-            {
-                var nodes = i.ChildNodes;
-                if (nodes.Length > 1) continue;
-                if (i.TextContent == "\n") continue;
-
-                var text = i.TextContent;
-                var pos = i.SourceReference?.Position.ToString();
-
-                var doc = new Document();
-                doc.Add(new Field("_start", pos, Field.Store.YES, Field.Index.ANALYZED));
-                doc.Add(new Field(name, text, Field.Store.YES, Field.Index.ANALYZED));
-                docs.Add(doc);
-            }
+            var index = init_doc_from_node(node);
+            index.Add(new Field("header", node.TextContent, Field.Store.YES, Field.Index.ANALYZED));
         }
 
-        void add_lists_to_docs(string tag, string name, List<Document> docs, AngleSharp.Html.Dom.IHtmlDocument parserd_doc)
+        void parse_OL(AngleSharp.Dom.INode node) 
         {
-            foreach (var i in parserd_doc.QuerySelectorAll(tag))
+            var list = node.ChildNodes;
+            var doc = init_doc_from_node(node);
+            foreach (var item in list)
             {
-                var nodes = i.ChildNodes;
-                var pos = i.SourceReference?.Position.ToString();
-
-                var doc = new Document();
-                doc.Add(new Field("_start", pos, Field.Store.YES, Field.Index.ANALYZED));
-
-                foreach (var node in nodes)
+                if (!item.FirstChild.HasChildNodes) {
+                    doc.Add(new Field("item", item.FirstChild.TextContent, Field.Store.YES, Field.Index.ANALYZED));
+                } else
                 {
-                    if (node.ChildNodes.Length > 1) continue;
-                    if (node.TextContent == "\n") continue;
-                    doc.Add(new Field(name, node.TextContent, Field.Store.YES, Field.Index.ANALYZED));
-                }
+                    var child = item.FirstChild;
 
-                docs.Add(doc);
-            }
-        }
-
-        void add_def_to_docs(string tag, string name, string def, string pos, List<Document> docs) {
-            var doc = new Document();
-            doc.Add(new Field("_start", pos, Field.Store.YES, Field.Index.ANALYZED));
-            doc.Add(new Field("tag", tag, Field.Store.YES, Field.Index.ANALYZED));
-            doc.Add(new Field("name", name, Field.Store.YES, Field.Index.ANALYZED));
-            doc.Add(new Field("def", def, Field.Store.YES, Field.Index.ANALYZED));
-            docs.Add(doc);
-        }
-        void add_defintion_to_docs(string tag, string name, List<Document> docs, AngleSharp.Html.Dom.IHtmlDocument parserd_doc)
-        {
-            foreach (var deflist in parserd_doc.QuerySelectorAll(tag)) {
-                var terms = deflist.QuerySelectorAll("dt");
-                var defins = deflist.QuerySelectorAll("dd");
-
-                var term_name = terms[0].TextContent;
-                for (int i = 0; i < terms.Length; i++)
-                {
-                    var defin = defins[i];
-                    
-                    var term_var = "";
-                    var pos = "";
-
-                    if (defin.QuerySelector("ol") != null)
-                    {
-                        var list = defin.QuerySelectorAll("li");
-
-                        foreach (var li in list)
-                        {
-                            var root = li
-                                .ParentElement  // ol
-                                .ParentElement  // dd
-                                .ParentElement  // dt
-                                .QuerySelector("dt")
-                                .TextContent;
-                            var check = root == term_name;
-                            var def = defin.TextContent;
-                            if (check && li.QuerySelector("dl") == null)
-                            {
-                                term_var = li.TextContent;
-                                pos = li.SourceReference.Position.ToString();
-                                add_def_to_docs("defin list item", term_name, term_var, pos, docs);
-                            }
-                        }
-                    }
-                    else 
-                    {
-                        term_var = defin.TextContent;
-                        pos = defin.SourceReference.Position.ToString();
-                        add_def_to_docs("def", terms[i].TextContent, term_var, pos, docs);
+                    if (child.NodeName == "DL") {
+                        doc.Add(new Field("def_list", child.TextContent.GetHashCode().ToString("X"), Field.Store.YES, Field.Index.ANALYZED));
+                        parse_DL(child);
                     }
                 }
             }
         }
+        void parse_DL(AngleSharp.Dom.INode node) 
+        {
+            var list = node.ChildNodes;
 
-        void create_index() {
+            for (int i = 0; i + 1 < list.Length; i += 2)
+            {
 
-            if (System.IO.Directory.Exists(index_path)) {
+                var def_name = list[i];
+                var def_val = list[i + 1].FirstChild;
+
+                var doc = init_doc_from_node(def_name);
+                doc.Add(new Field("def_name", def_name.TextContent, Field.Store.YES, Field.Index.ANALYZED));
+
+                if (def_val.NodeName == "P")
+                {
+                    doc.Add(new Field("def_type", "text", Field.Store.YES, Field.Index.ANALYZED));
+                    doc.Add(new Field("text", def_val.TextContent, Field.Store.YES, Field.Index.ANALYZED));
+                }
+
+                if (def_val.NodeName == "OL") 
+                {
+                    doc.Add(new Field("def_type", "list", Field.Store.YES, Field.Index.ANALYZED));
+                    doc.Add(new Field("list", def_val.TextContent.GetHashCode().ToString("X"), Field.Store.YES, Field.Index.ANALYZED));
+                    parse_OL(def_val);
+                }
+            }
+        }
+
+        void create_index()
+        {
+
+            if (System.IO.Directory.Exists(index_path))
+            {
                 System.IO.Directory.Delete(index_path, true);
                 index_dir = FSDirectory.Open(index_path);
             }
 
-            var parser = new AngleSharp.Html.Parser.HtmlParser(new AngleSharp.Html.Parser.HtmlParserOptions {
+            var parser = new AngleSharp.Html.Parser.HtmlParser(new AngleSharp.Html.Parser.HtmlParserOptions
+            {
                 IsKeepingSourceReferences = true
             });
             var html_doc = parser.ParseDocument(html);
 
-            var docs = new List<Document>();
-    
-            add_tag_to_docs("h1", "document", docs,  html_doc);
-            add_tag_to_docs("h2", "part", docs, html_doc);
-            add_tag_to_docs("h3", "theme", docs, html_doc);
-            add_tag_to_docs("h4", "subtheme", docs, html_doc);
-            add_tag_to_docs("p", "paragraph", docs, html_doc);
-            add_items_to_docs("li", "item", docs, html_doc);
-            add_lists_to_docs("ol", "list item", docs, html_doc);
-            add_defintion_to_docs("dl", "definiton item", docs, html_doc);
+            var body_nodes = html_doc.QuerySelector("body").ChildNodes;
+
+            foreach (var node in body_nodes)
+            {
+                var node_name = node.NodeName;
+
+                if (node_name == "H1" || node_name == "H2" || node_name == "H3" || node_name == "H4")
+                {
+                    parse_headers(node);
+                }
+
+                if (node_name == "DL") {
+                    parse_DL(node);
+                }
+
+                if (node_name == "P") {
+                    parse_P(node);
+                }
+            }
 
             using (var writer = new IndexWriter(index_dir, analyzer, IndexWriter.MaxFieldLength.UNLIMITED))
             {
-                foreach (var doc in docs)
-                {
-                    writer.AddDocument(doc);
-                }
+                docs.ForEach(x => writer.AddDocument(x));
             }
-            
+
+            html = html_doc.ToHtml();
+            richTextBox2.Text = html;
+            File.WriteAllText(outputfile, html);
         }
-        void search() {
+        void search()
+        {
             var form = new SearchForm(this);
             form.Show();
         }
@@ -230,7 +203,9 @@ namespace StudentHelper
 
         private void button2_Click(object sender, EventArgs e)
         {
-            Process.Start(outputfile);
+            //Process.Start(outputfile);
+            var open = new OpenHtml(html, outputfile);
+            open.Show();
         }
 
         private void button3_Click(object sender, EventArgs e)
