@@ -40,7 +40,6 @@ namespace StudentHelper
         string outputfile;
         string html;
 
-
         List<Document> docs = new List<Document>();
         List<AngleSharp.Dom.INode> nodes = new List<AngleSharp.Dom.INode>();
 
@@ -68,19 +67,30 @@ namespace StudentHelper
         }
 
         Document init_doc_from_node(AngleSharp.Dom.INode node) {
+            
+            // save to generate anchors
+            nodes.Add(node);
+
             var index_doc = new Document();
             var hash_id = node.TextContent.GetHashCode().ToString("X");
             new List<Field>() {
                 new Field("_type", node.NodeName, Field.Store.YES, Field.Index.ANALYZED),
                 new Field("_anchor", hash_id, Field.Store.YES, Field.Index.ANALYZED),
             }.ForEach(x => index_doc.Add(x));
+
+            
             docs.Add(index_doc);
             return index_doc;
+        }
 
-            // TODO: вынести в отдельную функцию или учесть что 1 элемент это ссылка
-            //var anchor = doc.CreateElement("a");
-            //anchor.SetAttribute("name", hash_id);
-            //node.AppendChild(anchor);
+        void gen_anchors(AngleSharp.Html.Dom.IHtmlDocument doc) {
+            foreach (var node in nodes)
+            {
+                var hash_id = node.TextContent.GetHashCode().ToString("X");
+                var anchor = doc.CreateElement("a");
+                anchor.SetAttribute("name", hash_id);
+                node.InsertBefore(anchor, node.FirstChild);
+            }
         }
 
         void parse_P(AngleSharp.Dom.INode node) {
@@ -126,7 +136,7 @@ namespace StudentHelper
                 var doc = init_doc_from_node(def_name);
                 doc.Add(new Field("def_name", def_name.TextContent, Field.Store.YES, Field.Index.ANALYZED));
 
-                if (def_val.NodeName == "P")
+                if (def_val.NodeName == "P" || def_val.NodeName == "#text")
                 {
                     doc.Add(new Field("def_type", "text", Field.Store.YES, Field.Index.ANALYZED));
                     doc.Add(new Field("text", def_val.TextContent, Field.Store.YES, Field.Index.ANALYZED));
@@ -180,6 +190,8 @@ namespace StudentHelper
             {
                 docs.ForEach(x => writer.AddDocument(x));
             }
+
+            gen_anchors(html_doc);
 
             html = html_doc.ToHtml();
             richTextBox2.Text = html;
