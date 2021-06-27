@@ -35,6 +35,7 @@ namespace StudentHelper
         public Form1()
         {
             InitializeComponent();
+            form_resize();
         }
 
         string outputfile;
@@ -55,11 +56,11 @@ namespace StudentHelper
 
             var markdown = File.ReadAllText($"E:\\2021 lecture\\kursach\\{file}.md");
 
-            richTextBox1.Text = markdown;
+            //richTextBox1.Text = markdown;
 
             html = Markdown.ToHtml(markdown, pipeline).Replace("\n", "");
 
-            richTextBox2.Text = html;
+            //richTextBox2.Text = html;
 
             outputfile = $"{file}.html";
 
@@ -153,6 +154,7 @@ namespace StudentHelper
 
         void create_index()
         {
+            md_to_html();
 
             if (System.IO.Directory.Exists(index_path))
             {
@@ -194,23 +196,105 @@ namespace StudentHelper
             gen_anchors(html_doc);
 
             html = html_doc.ToHtml();
-            richTextBox2.Text = html;
+            //richTextBox2.Text = html;
             File.WriteAllText(outputfile, html);
         }
+
+        List<AnswerLink> answers = new List<AnswerLink>();
+
         void search()
         {
-            var form = new SearchForm(this);
-            form.Show();
+            var indexSearcher = new IndexSearcher(index_dir);
+
+            var all_tags = indexSearcher.IndexReader.GetFieldNames(IndexReader.FieldOption.ALL);
+
+            var queryParser = new MultiFieldQueryParser(
+                Version.LUCENE_30,
+                //new string[] { "theme" },
+                all_tags.ToArray(),
+                analyzer
+            );
+
+            var term = textBox1.Text;
+
+            var timer = new Stopwatch();
+            timer.Start();
+            Query query = queryParser.Parse(term);
+            TopDocs hits = indexSearcher.Search(query, 10);
+            timer.Stop();
+            
+            var docs = hits.ScoreDocs;
+
+            status_label.Text = $"result count: {docs.Length}        time: {timer.Elapsed.TotalSeconds}";
+
+            if (answers.Count > 0) {
+                foreach (var i in answers)
+                {
+                    i.Dispose();
+                }
+                answers.Clear();
+            }
+
+            foreach (ScoreDoc scoreDoc in docs)
+            {
+                Document document = indexSearcher.Doc(scoreDoc.Doc);
+
+                var answer = new AnswerLink(document, scoreDoc.Score, new FileInfo(outputfile).FullName);
+
+                Controls.Add(answer);
+                
+                answers.Add(answer);
+
+                form_resize();
+/*              var answer_labal = new Label();
+                answer_labal.Text = "";
+                answer_labal.Text = out_ansver;
+
+                answer_labal.Font = new Font("Calibri", 18);
+                answer_labal.Top = top;
+                answer_labal.AutoSize = true;
+                answer_labal.MaximumSize = new Size(this.Width - 32, this.Height);
+
+                top = answer_labal.Top + answer_labal.PreferredHeight + pading;
+                Controls.Add(answer_labal);*/
+            }
+
+            indexSearcher.Dispose();
         }
 
+        void form_resize()
+        {
+            var centr = Width / 2;
+            label1.Left = centr - label1.Width / 2;
+            textBox1.Left = centr - textBox1.Width / 2;
+            
+            var pading = 25;
+
+            centr -= 15;
+
+            button1.Left = centr - button1.Width - 25;
+            button2.Left = centr + pading;
+
+            var top = status_label.Top + status_label.PreferredHeight + 10;
+            foreach (var i in answers)
+            {
+                i.Top = top;
+                i.Left = status_label.Left;
+                i.Width = Width - (32 * 3);
+                i.resize();
+                top = i.Top + i.Height + pading;
+            }
+
+            //Size = new Size(Width, PreferredSize.Height + 32);
+        }
         private void button1_Click(object sender, EventArgs e)
         {
-            md_to_html();
+            
         }
 
         private void Form1_Load(object sender, EventArgs e)
         {
-            md_to_html();
+            create_index();
         }
 
         private void button2_Click(object sender, EventArgs e)
@@ -228,6 +312,21 @@ namespace StudentHelper
         private void button4_Click(object sender, EventArgs e)
         {
             search();
+        }
+
+        private void Form1_Resize(object sender, EventArgs e)
+        {
+            form_resize();
+        }
+
+        private void button1_Click_1(object sender, EventArgs e)
+        {
+            search();
+        }
+
+        private void button2_Click_1(object sender, EventArgs e)
+        {
+            create_index();
         }
     }
 }
