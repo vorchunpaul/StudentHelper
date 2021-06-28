@@ -65,7 +65,7 @@ namespace StudentHelper
             this.button1.TabIndex = 2;
             this.button1.Text = "Поиск";
             this.button1.UseVisualStyleBackColor = true;
-            this.button1.Click += new System.EventHandler(this.button1_Click_1);
+            this.button1.Click += new System.EventHandler(this.start_search_click);
             // 
             // button2
             // 
@@ -76,7 +76,7 @@ namespace StudentHelper
             this.button2.TabIndex = 2;
             this.button2.Text = "Индекс";
             this.button2.UseVisualStyleBackColor = true;
-            this.button2.Click += new System.EventHandler(this.button2_Click_1);
+            this.button2.Click += new System.EventHandler(this.show_index_form);
             // 
             // status_label
             // 
@@ -102,7 +102,6 @@ namespace StudentHelper
             this.MinimumSize = new System.Drawing.Size(622, 282);
             this.Name = "Form1";
             this.Text = "StudentHelper";
-            this.Load += new System.EventHandler(this.Form1_Load);
             this.Resize += new System.EventHandler(this.Form1_Resize);
             this.ResumeLayout(false);
             this.PerformLayout();

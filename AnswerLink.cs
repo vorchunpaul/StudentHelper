@@ -40,17 +40,14 @@ namespace StudentHelper
             Size = new Size(Width, PreferredSize.Height + 32);
         }
 
-        public AnswerLink(Document doc, float score, string path)
+        public AnswerLink(Document doc, float score)
         {
             InitializeComponent();
 
             this.AutoSize = true;
-            
-            //this.AutoSizeMode = AutoSizeMode.GrowAndShrink;
 
-
-            this.doc = doc;
-            this.path = path;
+            this.doc = doc; 
+            this.path = doc.Get("_path"); ;
             this.anchor = doc.Get("_anchor");
 
             var type = doc.Get("_type");
